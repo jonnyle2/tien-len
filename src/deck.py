@@ -4,10 +4,23 @@ from typing import NamedTuple
 
 
 class Suit(IntEnum):
-    SPADES = 1
-    CLUBS = 2
-    DIAMONDS = 3
-    HEARTS = 4
+    SPADES = 1, '♠️'
+    CLUBS = 2, '♣️'
+    DIAMONDS = 3, '♦️'
+    HEARTS = 4, '♥️'
+
+    def __new__(cls, value, label):
+        obj = int.__new__(cls, value)
+        obj._value_ = value
+        obj.label = label  # assign new attribute label
+        return obj
+
+    @classmethod
+    def _missing_(cls, value):
+        # if we get here, simple value lookup has already failed
+        for k, v in cls.__members__.items():
+            if value in (k, v.label):
+                return v
 
 
 class Rank(IntEnum):
@@ -45,7 +58,7 @@ class Card(NamedTuple):
     suit: Suit
 
     def __str__(self):
-        return f'{self.rank.label} {self.suit.name}'
+        return f'[{self.rank.label} {self.suit.label}]'
 
 
 DECK = frozenset(Card(rank=rank, suit=suit) for suit in Suit for rank in Rank)
