@@ -1,10 +1,10 @@
 from collections import Counter
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Collection
 
 from deck import Card, Rank, Suit
 
-DRAGON_SEQUENCE = frozenset((Rank(i) for i in range(3, 15)))
+DRAGON_SEQUENCE = frozenset(list(Rank)[:-1])
 def _has_dragon_sequence(hand: set[Card]) -> bool:
     return DRAGON_SEQUENCE <= set(card.rank for card in hand)
 
@@ -55,6 +55,16 @@ class Pair:
     def __str__(self):
         return ' '.join(str(card) for card in sorted((self.card_1, self.card_2)))
 
+    def __gt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return max(self.card_1, self.card_2) > max(other.card_1, other.card_2)
+
+    def __lt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return max(self.card_1, self.card_2) < max(other.card_1, other.card_2)
+
 
 @dataclass(slots=True)
 class Triple:
@@ -68,6 +78,16 @@ class Triple:
 
     def __str__(self):
         return ' '.join(str(card) for card in sorted((self.card_1, self.card_2, self.card_3)))
+
+    def __gt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return self.card_1.rank > other.card_1.rank
+
+    def __lt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return self.card_1.rank < other.card_1.rank
 
 
 @dataclass(slots=True)
@@ -84,14 +104,26 @@ class Quad:
     def __str__(self):
         return ' '.join(str(card) for card in sorted((self.card_1, self.card_2, self.card_3, self.card_4)))
 
+    def __gt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return self.card_1.rank > other.card_1.rank
+
+    def __lt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return self.card_1.rank < other.card_1.rank
+
 
 @dataclass(slots=True)
 class Straight:
-    cards: Iterable[Card]
+    cards: Collection[Card]
 
     def __post_init__(self):
         if len(self.cards) < 3:
             raise ValueError('Straights must have at least 3 cards.')
+        if any(card in FOUR_TWOS for card in self.cards):
+            raise ValueError('Straights cannot contain ranks of 2.')
         sorted_cards = sorted(self.cards)
         next_card = sorted_cards[0].rank + 1
         for i in range(1, len(sorted_cards)):
@@ -102,8 +134,18 @@ class Straight:
     def __str__(self):
         return ' '.join(str(card) for card in sorted(self.cards))
 
+    def __gt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return max(self.cards) > max(other.cards)
 
-def get_combination(cards: Iterable[Card]):
+    def __lt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return max(self.cards) < max(other.cards)
+
+
+def get_combination(cards: Collection[Card]):
     if len(cards) == 1:
         return Single(*cards)
     if len(cards) == 2:
@@ -114,16 +156,16 @@ def get_combination(cards: Iterable[Card]):
         except ValueError:
             try:
                 return Triple(*cards)
-            except ValueError:
-                raise ValueError('Cards are not a valid straight or triple combination.')
+            except ValueError as e:
+                raise ValueError('Cards are not a valid straight or triple combination.') from e
     if len(cards) == 4:
         try:
             return Straight(cards)
         except ValueError:
             try:
                 return Quad(*cards)
-            except ValueError:
-                raise ValueError('Cards are not a valid straight or quad combination.')
+            except ValueError as e:
+                raise ValueError('Cards are not a valid straight or quad combination.') from e
     if len(cards) > 4:
         return Straight(cards)
     raise ValueError('Cards are not a valid combination.')
