@@ -21,8 +21,9 @@ class Seat:
     hand: set[Card]
 
 
-def print_and_get_card_selection(seat: Seat, to_beat: Card | None = None) -> Single | Pair | Straight | Triple | Quad | None:
-    hand_str = [f'[{card.rank} {card.suit}]' for card in seat.hand]
+def print_and_get_card_selection(seat: Seat, to_beat: Single | Pair | Straight | Triple | Quad | None = None) -> Single | Pair | Straight | Triple | Quad | None:
+    sorted_hand = sorted(seat.hand)
+    hand_str = [f'[{card.rank} {card.suit}]' for card in sorted_hand]
     print(tabulate([hand_str, range(1, len(hand_str)+1)]))  # print hand and indexes
     while True:
         if to_beat:
@@ -32,14 +33,14 @@ def print_and_get_card_selection(seat: Seat, to_beat: Card | None = None) -> Sin
             print('New round. Play any combination to start.')
         play_input = input(f'{seat.player} - select cards separated by spaces: ').split()
         try:
-            cards = {seat.hand[int(i)-1] for i in play_input}
+            cards = {sorted_hand[int(i)-1] for i in play_input}
         except ValueError:
             if to_beat and play_input[0].lower() == 'pass':
                 return None
             print('Please enter only numbers.')
             continue
         except IndexError:
-            print(f'Please enter only numbers from 1-{len(len(seat.hand))}.')
+            print(f'Please enter only numbers from 1-{len(seat.hand)}.')
             continue
         try:
             play = rule.get_combination(cards)
@@ -47,19 +48,21 @@ def print_and_get_card_selection(seat: Seat, to_beat: Card | None = None) -> Sin
             print(str(e))
             continue
         if to_beat:
-            if not isinstance(play, type(to_beat)):
-                print(f'Round is {str(type(to_beat)).lower()}s. Please only ')
-                continue
-            if play < to_beat:
-                print(f'Combination must be higher than {str(to_beat)}.')
+            try:
+                if play < to_beat:
+                    print(f'Combination must be higher than {to_beat}.')
+                    continue
+            except TypeError:
+                print(f'Round is {str(type(to_beat)).lower()}s.')
                 continue
         seat.hand.difference_update(cards)
         return play
 
 
-def start_game(players: Iterable[str]):
+def start_game(player_names: Iterable[str]):
+    players = (Player(player, 0) for player in player_names)
     seats = [Seat(player, hand) for player, hand in zip(players, deal_deck())]
-    
+
     # check for instant wins
     instant_winners = []
     for seat in seats:
@@ -72,7 +75,7 @@ def start_game(players: Iterable[str]):
             print(f'Hand: {winner[0].hand}')
         first_place = [w[0].player for w in instant_winners]
         print(f'1st place: {", ".join(first_place)}')
-        print(f'4th place: {", ".join((seat.player for seat in seats if seat.player not in first_place))}')
+        print(f'4th place: {", ".join((seat.player.name for seat in seats if seat.player not in first_place))}')
         return  # instant win, game ends
 
     winners = []
