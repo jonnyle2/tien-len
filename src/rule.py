@@ -1,4 +1,5 @@
 from collections import Counter
+from dataclasses import dataclass
 from typing import Iterable
 
 from deck import Card, Rank, Suit
@@ -42,39 +43,64 @@ class Single(Card):
         return super().__new__(cls, card.rank, card.suit)
 
 
-class Pair(Card):
-    def __new__(cls, card_1: Card, card_2: Card):
-        if card_1.rank != card_2.rank:
-            raise ValueError(f'Pairs must be the same rank: {card_1.rank} does not match {card_2.rank}.')
-        return super().__new__(cls, card_1.rank, max(card_1.suit, card_2.suit))
+@dataclass(slots=True)
+class Pair:
+    card_1: Card
+    card_2: Card
+
+    def __post_init__(self):
+        if self.card_1.rank != self.card_2.rank:
+            raise ValueError(f'Pairs must be the same rank: {self.card_1.rank} does not match {self.card_2.rank}.')
+
+    def __str__(self):
+        return ' '.join(str(card) for card in sorted((self.card_1, self.card_2)))
 
 
-class Triple(Card):
-    def __new__(cls, card_1: Card, card_2: Card, card_3: Card):
-        if card_1.rank != card_2.rank or card_2.rank != card_3.rank:
-            raise ValueError(f'Triples must all be the same rank: {card_1.rank}, {card_2.rank}, {card_3.rank}.')
-        return super().__new__(cls, card_1.rank, Suit.HEARTS)
+@dataclass(slots=True)
+class Triple:
+    card_1: Card
+    card_2: Card
+    card_3: Card
+
+    def __post_init__(self):
+        if self.card_1.rank != self.card_2.rank or self.card_2.rank != self.card_3.rank:
+            raise ValueError(f'Triples must all be the same rank: {self.card_1.rank}, {self.card_2.rank}, {self.card_3.rank}.')
+
+    def __str__(self):
+        return ' '.join(str(card) for card in sorted((self.card_1, self.card_2, self.card_3)))
 
 
-class Quad(Card):
-    def __new__(cls, card_1: Card, card_2: Card, card_3: Card, card_4: Card):
-        if any(card != card_1 for card in (card_2, card_3, card_4)):
-            raise ValueError(f'Quads must all be the same rank: {card_1}, {card_2}, {card_3}, {card_4}.')
-        return super().__new__(cls, card_1.rank, Suit.HEARTS)
+@dataclass(slots=True)
+class Quad:
+    card_1: Card
+    card_2: Card
+    card_3: Card
+    card_4: Card
+
+    def __post_init__(self):
+        if any(card.rank != self.card_1.rank for card in (self.card_2, self.card_3, self.card_4)):
+            raise ValueError(f'Quads must all be the same rank: {self.card_1}, {self.card_2}, {self.card_3}, {self.card_4}.')
+
+    def __str__(self):
+        return ' '.join(str(card) for card in sorted((self.card_1, self.card_2, self.card_3, self.card_4)))
 
 
-class Straight(Card):
-    def __new__(cls, cards: Iterable[Card]):
-        if len(cards) < 3:
+@dataclass(slots=True)
+class Straight:
+    cards: Iterable[Card]
+
+    def __post_init__(self):
+        if len(self.cards) < 3:
             raise ValueError('Straights must have at least 3 cards.')
-        sorted_cards = sorted(cards)
+        sorted_cards = sorted(self.cards)
         next_card = sorted_cards[0].rank + 1
         for i in range(1, len(sorted_cards)):
-            if next_card != sorted_cards[i]:
-                ranks = (card.rank for card in sorted_cards)
-                raise ValueError(f'Straights must be sequential in rank. Current cards: {", ".join(ranks)}')
+            if next_card != sorted_cards[i].rank:
+                raise ValueError(f'Straights must be sequential in rank. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
             next_card += 1
-        return super().__new__(cls, sorted_cards[-1].rank, sorted_cards[-1].suit)
+
+    def __str__(self):
+        return ' '.join(str(card) for card in sorted(self.cards))
 
 
 def get_combination(cards: Iterable[Card]):
