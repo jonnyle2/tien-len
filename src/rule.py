@@ -4,6 +4,8 @@ from typing import Collection
 
 from deck import Card, Rank, Suit
 
+THREE_SPADES = Card(Rank.THREE, Suit.SPADES)
+
 DRAGON_SEQUENCE = frozenset(list(Rank)[:-1])
 def _has_dragon_sequence(hand: set[Card]) -> bool:
     return DRAGON_SEQUENCE <= set(card.rank for card in hand)
