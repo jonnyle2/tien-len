@@ -1,5 +1,6 @@
 from collections import Counter
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Collection
 
 from deck import Card, Rank, Suit
@@ -107,6 +108,10 @@ class Quad:
         return ' '.join(str(card) for card in sorted((self.card_1, self.card_2, self.card_3, self.card_4)))
 
     def __gt__(self, other):
+        if isinstance(other, Single) and other.rank is Rank.TWO:
+            return True
+        if isinstance(other, Pair) and other.card_1 is Rank.TWO:
+            return True
         if not isinstance(other, type(self)):
             raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
         return self.card_1.rank > other.card_1.rank
@@ -127,16 +132,56 @@ class Straight:
         if any(card in FOUR_TWOS for card in self.cards):
             raise ValueError('Straights cannot contain ranks of 2.')
         sorted_cards = sorted(self.cards)
-        next_card = sorted_cards[0].rank + 1
-        for i in range(1, len(sorted_cards)):
-            if next_card != sorted_cards[i].rank:
+        running_rank = sorted_cards[0].rank.value + 1
+        for card in sorted_cards[1:]:
+            if running_rank != card.rank:
                 raise ValueError(f'Straights must be sequential in rank. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
-            next_card += 1
+            running_rank += 1
 
     def __str__(self):
         return ' '.join(str(card) for card in sorted(self.cards))
 
     def __gt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return max(self.cards) > max(other.cards)
+
+    def __lt__(self, other):
+        if not isinstance(other, type(self)):
+            raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        return max(self.cards) < max(other.cards)
+
+
+@dataclass(slots=True)
+class SequentialPairs:
+    cards: Collection[Card]
+
+    def __post_init__(self):
+        if len(self.cards) < 6:
+            raise ValueError('Sequential pairs must have at least 6 cards.')
+        if len(self.cards) % 2 != 0:
+            raise ValueError('Sequential pairs must have an even number of cards.')
+        if any(card in FOUR_TWOS for card in self.cards):
+            raise ValueError('Sequential pairs cannot contain ranks of 2.')
+        sorted_cards = sorted(self.cards)
+        if any(first.rank != second.rank for first, second in pairwise(sorted_cards)):
+            raise ValueError(f'Sequential pairs must have pairs. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
+        running_rank = sorted_cards[0].rank.value + 1
+        for card in sorted_cards[1::2]:
+            if running_rank != card.rank:
+                raise ValueError(f'Sequential pairs must be sequential in rank. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
+            running_rank += 1
+
+    def __str__(self):
+        return ' '.join(str(card) for card in sorted(self.cards))
+
+    def __gt__(self, other):
+        if isinstance(other, Single) and other.rank is Rank.TWO:
+            return True
+        if isinstance(other, Pair) and other.card_1 is Rank.TWO and len(self.cards) > 6:
+            return True
+        if isinstance(other, Triple) and other.card_1 is Rank.TWO and len(self.cards) > 8:
+            return True
         if not isinstance(other, type(self)):
             raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
         return max(self.cards) > max(other.cards)
@@ -169,5 +214,11 @@ def get_combination(cards: Collection[Card]):
             except ValueError as e:
                 raise ValueError('Cards are not a valid straight or quad combination.') from e
     if len(cards) > 4:
-        return Straight(cards)
+        try:
+            return Straight(cards)
+        except ValueError:
+            try:
+                return SequentialPairs(cards)
+            except ValueError as e:
+                raise ValueError('Cards are not a valid straight or sequential pairs.') from e
     raise ValueError('Cards are not a valid combination.')
