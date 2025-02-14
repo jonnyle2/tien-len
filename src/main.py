@@ -31,15 +31,17 @@ def print_and_get_card_selection(seat: Seat,
         if to_beat:
             print(f'{type(to_beat).__name__.capitalize()}s round.')
             print(f'Current: {to_beat}')
-        else:
+        elif not first_round:
             print('New round. Play any combination to start.')
+        else:
+            print('First round. Play any combination with the 3 of spades.')
         play_input = input(f'{seat.player.name} - select cards separated by spaces: ').split()
         try:
             cards = {sorted_hand[int(i)-1] for i in play_input}
         except ValueError:
             if to_beat and play_input[0].lower() == 'pass':
                 return None
-            print('Please enter only numbers.')
+            print('Please enter only numbers or "pass".')
             continue
         except IndexError:
             print(f'Please enter only numbers from 1-{len(seat.hand)}.')
@@ -77,34 +79,34 @@ def start_game(player_names: Iterable[str]):
             instant_winners.append((seat, instant_win))
     if instant_winners:
         for winner in instant_winners:
-            print(f'{winner[0].player} got an instant win by {winner[1]}!')
-            print(f'Hand: {winner[0].hand}')
-        first_place = [w[0].player for w in instant_winners]
+            print(f'{winner[0].player.name} got an instant win by {winner[1]}!')
+            print(f'Hand: {sorted(winner[0].hand)}')
+        first_place = [w[0].player.name for w in instant_winners]
         print(f'1st place: {", ".join(first_place)}')
         print(f'4th place: {", ".join((seat.player.name for seat in seats if seat.player not in first_place))}')
         return  # instant win, game ends
 
     winners = []
-    round_winner_index = next(i for i in range(len(seats)) if Card(Rank.THREE, Suit.SPADES) in seats[i].hand)
+    first = next(i for i in range(len(seats)) if Card(Rank.THREE, Suit.SPADES) in seats[i].hand)
     first_round = True
     round_order = deque()
-    round_order.extendleft(seats[round_winner_index:])  # append in reverse order so pop() works properly
-    round_order.extendleft(seats[:round_winner_index])
+    round_order.extendleft(seats[first:] + seats[:first])  # append in reverse order so pop() works properly
     while len(winners) < 3:
         # Start round
+        seat_turn = round_order[-1]
         if not first_round:
-            play = print_and_get_card_selection(round_order[-1])
-            if len(round_order[-1].hand) == 0:
-                seats.remove(round_order[-1])
-                winners.append(round_order[-1])
+            play = print_and_get_card_selection(seat_turn)
+            if len(seat_turn.hand) == 0:
+                winners.append(seat_turn)
                 round_order.pop()
             else:
                 round_order.rotate()
         else:
             # first round requires 3 spades
-            play = print_and_get_card_selection(round_order[-1], first_round=True)
+            play = print_and_get_card_selection(seat_turn, first_round=True)
             first_round = False  # set off after first round
             round_order.rotate()
+        current_lead = seat_turn  # specifically to catch if player wins round and is done, the player to the left goes next, not last to pass in round.
         while len(round_order) > 1:
             seat_turn = round_order[-1]
             last_play = play
@@ -113,15 +115,24 @@ def start_game(player_names: Iterable[str]):
                 play = last_play
                 round_order.pop()
                 continue
+            current_lead = seat_turn
             if len(seat_turn.hand) == 0:
-                seats.remove(seat_turn)
                 winners.append(seat_turn)
                 round_order.pop()
                 continue
             round_order.rotate()
-        round_winner_index = seats.index(round_order[0])
-        round_order.extendleft(seats[round_winner_index+1:])
-        round_order.extendleft(seats[:round_winner_index])
+        if current_lead != round_order[0]:
+            # round winner was done, re-correct order
+            # loop through seats that aren't done, starting with
+            i = seats.index(current_lead)
+            next_player = next(seat for seat in seats[i+1:] + seats[:i] if len(seat.hand) != 0)
+            index = seats.index(next_player)
+        else:
+            index = seats.index(round_order[0])
+        for seat in seats:
+            if len(seat.hand) == 0:
+                seats.remove(seat_turn)
+        round_order.extendleft(seats[index+1:] + seats[:index])
     print(f'1st place: {winners[0].player.name}')
     print(f'2nd place: {winners[1].player.name}')
     print(f'3rd place: {winners[2].player.name}')
