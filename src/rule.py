@@ -167,7 +167,7 @@ class SequentialPairs:
         if any(first.rank != second.rank for first, second in pairwise(sorted_cards)):
             raise ValueError(f'Sequential pairs must have pairs. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
         running_rank = sorted_cards[0].rank.value + 1
-        for card in sorted_cards[1::2]:
+        for card in sorted_cards[2::2]:
             if running_rank != card.rank:
                 raise ValueError(f'Sequential pairs must be sequential in rank. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
             running_rank += 1
@@ -220,5 +220,6 @@ def get_combination(cards: Collection[Card]):
             try:
                 return SequentialPairs(cards)
             except ValueError as e:
+                print(str(e))
                 raise ValueError('Cards are not a valid straight or sequential pairs.') from e
     raise ValueError('Cards are not a valid combination.')

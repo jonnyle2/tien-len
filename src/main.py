@@ -122,17 +122,23 @@ def start_game(player_names: Iterable[str]):
                 continue
             round_order.rotate()
         if current_lead != round_order[0]:
-            # round winner was done, re-correct order
-            # loop through seats that aren't done, starting with
-            i = seats.index(current_lead)
-            next_player = next(seat for seat in seats[i+1:] + seats[:i] if len(seat.hand) != 0)
-            index = seats.index(next_player)
+            # round winner was done, check if they can play and re-correct order
+            play = print_and_get_card_selection(round_order[0], play)
+            if play:
+                index = seats.index(round_order[0])
+            else:
+                # loop through seats that aren't done, starting with
+                print(current_lead)
+                i = seats.index(current_lead)
+                next_player = next(seat for seat in seats[i+1:] + seats[:i] if len(seat.hand) != 0)
+                index = seats.index(next_player)
         else:
             index = seats.index(round_order[0])
+        round_order.pop()  # remove last person in round
         for seat in seats:
             if len(seat.hand) == 0:
                 seats.remove(seat_turn)
-        round_order.extendleft(seats[index+1:] + seats[:index])
+        round_order.extendleft(seats[index:] + seats[:index])
     print(f'1st place: {winners[0].player.name}')
     print(f'2nd place: {winners[1].player.name}')
     print(f'3rd place: {winners[2].player.name}')
