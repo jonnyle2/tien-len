@@ -5,7 +5,7 @@ from typing import Iterable
 from tabulate import tabulate
 
 import rule
-from rule import Single, Pair, Straight, Triple, Quad, THREE_SPADES
+from rule import Single, Pair, SequentialPairs, Straight, Triple, Quad, THREE_SPADES
 from deck import Card, Rank, Suit, deal_deck
 
 
@@ -22,8 +22,8 @@ class Seat:
 
 
 def print_and_get_card_selection(seat: Seat,
-                                 to_beat: Single | Pair | Straight | Triple | Quad | None = None,
-                                 first_round: bool = False) -> Single | Pair | Straight | Triple | Quad | None:
+                                 to_beat: Single | Pair | Straight | Triple | Quad | SequentialPairs | None = None,
+                                 first_round: bool = False) -> Single | Pair | Straight | Triple | Quad | SequentialPairs | None:
     sorted_hand = sorted(seat.hand)
     hand_str = [f'{card.rank.label} {card.suit.label}' for card in sorted_hand]
     print(tabulate([hand_str, range(1, len(hand_str)+1)], tablefmt='rounded_grid'))  # print hand and indexes
@@ -48,7 +48,7 @@ def print_and_get_card_selection(seat: Seat,
             continue
         if first_round:
             if THREE_SPADES not in cards:
-                print(f'First round, first play requires 3 of spades.')
+                print('First round, first play requires 3 of spades.')
                 continue
         try:
             play = rule.get_combination(cards)
@@ -57,7 +57,7 @@ def print_and_get_card_selection(seat: Seat,
             continue
         if to_beat:
             try:
-                if play < to_beat:
+                if not play > to_beat:  # not > (instead of <) to avoid implementing __lt__ in singles, pairs, and triples
                     print(f'Combination must be higher than {to_beat}.')
                     continue
             except TypeError:
@@ -128,16 +128,18 @@ def start_game(player_names: Iterable[str]):
                 index = seats.index(round_order[0])
             else:
                 # loop through seats that aren't done, starting with
-                print(current_lead)
                 i = seats.index(current_lead)
+                print(seats[i+1:] + seats[:i])
                 next_player = next(seat for seat in seats[i+1:] + seats[:i] if len(seat.hand) != 0)
+                print(next_player)
                 index = seats.index(next_player)
         else:
+            print('Current == Last person in round')
             index = seats.index(round_order[0])
         round_order.pop()  # remove last person in round
         for seat in seats:
             if len(seat.hand) == 0:
-                seats.remove(seat_turn)
+                seats.remove(seat)
         round_order.extendleft(seats[index:] + seats[:index])
     print(f'1st place: {winners[0].player.name}')
     print(f'2nd place: {winners[1].player.name}')
