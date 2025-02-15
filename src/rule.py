@@ -1,6 +1,5 @@
 from collections import Counter
 from dataclasses import dataclass
-from itertools import pairwise
 from typing import Collection
 
 from deck import Card, Rank, Suit
@@ -144,11 +143,15 @@ class Straight:
     def __gt__(self, other):
         if not isinstance(other, type(self)):
             raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        if len(self.cards) != len(other.cards):
+            raise ValueError(f'Cannot compare straight of size {len(self.cards)} to {len(other.cards)}.')
         return max(self.cards) > max(other.cards)
 
     def __lt__(self, other):
         if not isinstance(other, type(self)):
             raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        if len(self.cards) != len(other.cards):
+            raise ValueError(f'Cannot compare straight of size {len(self.cards)} to {len(other.cards)}.')
         return max(self.cards) < max(other.cards)
 
 
@@ -164,7 +167,7 @@ class SequentialPairs:
         if any(card in FOUR_TWOS for card in self.cards):
             raise ValueError('Sequential pairs cannot contain ranks of 2.')
         sorted_cards = sorted(self.cards)
-        if any(first.rank != second.rank for first, second in pairwise(sorted_cards)):
+        if any(sorted_cards[i].rank != sorted_cards[i+1].rank for i in range(0, len(sorted_cards), 2)):
             raise ValueError(f'Sequential pairs must have pairs. Current cards: {", ".join((str(card.rank) for card in sorted_cards))}')
         running_rank = sorted_cards[0].rank.value + 1
         for card in sorted_cards[2::2]:
@@ -184,11 +187,15 @@ class SequentialPairs:
             return True
         if not isinstance(other, type(self)):
             raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        if len(self.cards) != len(other.cards):
+            raise ValueError(f'Cannot compare sequential pairs of size {len(self.cards)} to {len(other.cards)}.')
         return max(self.cards) > max(other.cards)
 
     def __lt__(self, other):
         if not isinstance(other, type(self)):
             raise TypeError(f'Cannot compare {type(other)} to {type(self)}.')
+        if len(self.cards) != len(other.cards):
+            raise ValueError(f'Cannot compare sequential pairs of size {len(self.cards)} to {len(other.cards)}.')
         return max(self.cards) < max(other.cards)
 
 

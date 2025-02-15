@@ -63,6 +63,9 @@ def print_and_get_card_selection(seat: Seat,
             except TypeError:
                 print(f'Round is {type(to_beat).__name__.lower()}s. Play only this combination of cards.')
                 continue
+            except ValueError as e:
+                print(str(e))
+                continue
         seat.hand.difference_update(cards)
         return play
 
@@ -121,25 +124,23 @@ def start_game(player_names: Iterable[str]):
                 round_order.pop()
                 continue
             round_order.rotate()
-        if current_lead != round_order[0]:
+        next_player = round_order[0]
+        if current_lead != next_player:
+            if len(winners) == 3:
+                break  # avoid last move of last player
             # round winner was done, check if they can play and re-correct order
-            play = print_and_get_card_selection(round_order[0], play)
+            play = print_and_get_card_selection(next_player, play)
             if play:
-                index = seats.index(round_order[0])
+                index = seats.index(next_player)
             else:
                 # loop through seats that aren't done, starting with
                 i = seats.index(current_lead)
-                print(seats[i+1:] + seats[:i])
                 next_player = next(seat for seat in seats[i+1:] + seats[:i] if len(seat.hand) != 0)
-                print(next_player)
-                index = seats.index(next_player)
-        else:
-            print('Current == Last person in round')
-            index = seats.index(round_order[0])
         round_order.pop()  # remove last person in round
         for seat in seats:
             if len(seat.hand) == 0:
                 seats.remove(seat)
+        index = seats.index(next_player)
         round_order.extendleft(seats[index:] + seats[:index])
     print(f'1st place: {winners[0].player.name}')
     print(f'2nd place: {winners[1].player.name}')
