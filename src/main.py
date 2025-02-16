@@ -5,25 +5,19 @@ from typing import Iterable
 from tabulate import tabulate
 
 import rule
-from rule import Single, Pair, SequentialPairs, Straight, Triple, Quad, THREE_SPADES
-from deck import Card, Rank, Suit, deal_deck
-
-
-@dataclass(slots=True)
-class Player:
-    name: str
-    balance: int
+from deck import Card, deal_deck
+from rule import Pair, Quad, SequentialPairs, Single, Straight, Triple
 
 
 @dataclass(slots=True)
 class Seat:
-    player: Player
+    player: str
     hand: set[Card]
 
 
 def print_and_get_card_selection(seat: Seat,
                                  to_beat: Single | Pair | Straight | Triple | Quad | SequentialPairs | None = None,
-                                 first_round: bool = False) -> Single | Pair | Straight | Triple | Quad | SequentialPairs | None:
+                                 min_card: Card | None = None) -> Single | Pair | Straight | Triple | Quad | SequentialPairs | None:
     sorted_hand = sorted(seat.hand)
     hand_str = [f'{card.rank.label} {card.suit.label}' for card in sorted_hand]
     print(tabulate([hand_str, range(1, len(hand_str)+1)], tablefmt='rounded_grid'))  # print hand and indexes
@@ -31,11 +25,11 @@ def print_and_get_card_selection(seat: Seat,
         if to_beat:
             print(f'{type(to_beat).__name__.capitalize()}s round.')
             print(f'Current: {to_beat}')
-        elif not first_round:
+        elif not min_card:
             print('New round. Play any combination to start.')
         else:
-            print('First round. Play any combination with the 3 of spades.')
-        play_input = input(f'{seat.player.name} - select cards separated by spaces: ').split()
+            print(f'First play of game. Play a combination with your lowest card: {min_card.rank.label} of {min_card.suit.name.lower()}.')
+        play_input = input(f'{seat.player} - select cards separated by spaces or "pass": ').split()
         try:
             cards = {sorted_hand[int(i)-1] for i in play_input}
         except ValueError:
@@ -46,9 +40,9 @@ def print_and_get_card_selection(seat: Seat,
         except IndexError:
             print(f'Please enter only numbers from 1-{len(seat.hand)}.')
             continue
-        if first_round:
-            if THREE_SPADES not in cards:
-                print('First round, first play requires 3 of spades.')
+        if min_card is not None:
+            if min_card not in cards:
+                print(f'First play of game requires your lowest card: {min_card.rank.label} of {min_card.suit.name.lower()}.')
                 continue
         try:
             play = rule.get_combination(cards)
@@ -70,8 +64,7 @@ def print_and_get_card_selection(seat: Seat,
         return play
 
 
-def start_game(player_names: Iterable[str]):
-    players = (Player(player, 0) for player in player_names)
+def start_game(players: Iterable[str]):
     seats = [Seat(player, hand) for player, hand in zip(players, deal_deck())]
 
     # check for instant wins
@@ -82,19 +75,26 @@ def start_game(player_names: Iterable[str]):
             instant_winners.append((seat, instant_win))
     if instant_winners:
         for winner in instant_winners:
-            print(f'{winner[0].player.name} got an instant win by {winner[1]}!')
+            print(f'{winner[0].player} got an instant win by {winner[1]}!')
             print(f'Hand: {sorted(winner[0].hand)}')
-        first_place = [w[0].player.name for w in instant_winners]
+        first_place = [w[0].player for w in instant_winners]
         print(f'1st place: {", ".join(first_place)}')
-        print(f'4th place: {", ".join((seat.player.name for seat in seats if seat.player not in first_place))}')
+        print(f'4th place: {", ".join((seat.player for seat in seats if seat.player not in first_place))}')
         return  # instant win, game ends
 
     winners = []
-    first = next(i for i in range(len(seats)) if Card(Rank.THREE, Suit.SPADES) in seats[i].hand)
+    # find player with lowest card
+    first = 0
+    min_card = min(seats[first].hand)
+    for i in range(1, len(seats)):
+        curr_min = min(seats[i].hand)
+        if curr_min < min_card:
+            min_card = curr_min
+            first = i
     first_round = True
     round_order = deque()
     round_order.extendleft(seats[first:] + seats[:first])  # append in reverse order so pop() works properly
-    while len(winners) < 3:
+    while len(winners) < len(seats) - 1:
         # Start round
         seat_turn = round_order[-1]
         if not first_round:
@@ -105,8 +105,8 @@ def start_game(player_names: Iterable[str]):
             else:
                 round_order.rotate()
         else:
-            # first round requires 3 spades
-            play = print_and_get_card_selection(seat_turn, first_round=True)
+            # first round requires lowest card
+            play = print_and_get_card_selection(seat_turn, min_card=min_card)
             first_round = False  # set off after first round
             round_order.rotate()
         current_lead = seat_turn  # specifically to catch if player wins round and is done, the player to the left goes next, not last to pass in round.
@@ -126,7 +126,7 @@ def start_game(player_names: Iterable[str]):
             round_order.rotate()
         next_player = round_order[0]
         if current_lead != next_player:
-            if len(winners) == 3:
+            if len(winners) == len(seats) - 1:
                 break  # avoid last move of last player
             # round winner was done, check if they can play and re-correct order
             play = print_and_get_card_selection(next_player, play)
@@ -142,21 +142,30 @@ def start_game(player_names: Iterable[str]):
                 seats.remove(seat)
         index = seats.index(next_player)
         round_order.extendleft(seats[index:] + seats[:index])
-    print(f'1st place: {winners[0].player.name}')
-    print(f'2nd place: {winners[1].player.name}')
-    print(f'3rd place: {winners[2].player.name}')
-    print(f'4th place: {seats[0].player.name}')
+
+    # print placements
+    prefixes = ['1st place: ', '2nd place: ', '3rd place: ', '4th place: ']
+    winners.append(seats[0])
+    for prefix, seat in zip(prefixes, winners):
+        print(prefix + seat.player)
 
 
 if __name__ == '__main__':
     print('Press "Crtl + C" to exit at any time.')
-    print('Enter player names.')
-    p1 = input('Player 1: ')
-    p2 = input('Player 2: ')
-    p3 = input('Player 3: ')
-    p4 = input('Player 4: ')
     while True:
-        start_game((p1, p2, p3, p4))
+        try:
+            num_players = int(input('Enter number of players (2-4): '))
+        except ValueError:
+            print('Please enter only numbers 2-4.')
+            continue
+        if num_players not in (2, 3 ,4):
+            print('Please enter only numbers 2-4.')
+            continue
+        break
+    print('Enter player names.')
+    players = [input(f'Player {i}: ') for i in range(1, num_players+1)]
+    while True:
+        start_game(players)
         ans = input('Play again (y/n)? ')
         if ans.lower() == 'n':
             break
