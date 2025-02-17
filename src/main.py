@@ -87,6 +87,7 @@ def start_game(players: Iterable[str]):
         return  # instant win, game ends
 
     winners = []
+    total_players = len(seats)  # track total players to see when to end game
     # find player with lowest card
     first = 0
     min_card = min(seats[first].hand)
@@ -98,7 +99,7 @@ def start_game(players: Iterable[str]):
     first_round = True
     round_order = deque()
     round_order.extendleft(seats[first:] + seats[:first])  # append in reverse order so pop() works properly
-    while len(winners) < len(seats) - 1:
+    while len(winners) < total_players - 1:
         # Start round
         seat_turn = round_order[-1]
         if not first_round:
@@ -130,13 +131,11 @@ def start_game(players: Iterable[str]):
             round_order.rotate()
         next_player = round_order[0]
         if current_lead != next_player:
-            if len(winners) == len(seats) - 1:
+            if len(winners) == total_players - 1:
                 break  # avoid last move of last player
             # round winner was done, check if they can play and re-correct order
             play = print_and_get_card_selection(next_player, play)
-            if play:
-                index = seats.index(next_player)
-            else:
+            if not play or len(next_player.hand) == 0:
                 # loop through seats that aren't done, starting with
                 i = seats.index(current_lead)
                 next_player = next(seat for seat in seats[i+1:] + seats[:i] if len(seat.hand) != 0)
