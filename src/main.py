@@ -1,3 +1,4 @@
+import operator
 import os
 from collections import deque
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ class Seat:
 def print_and_get_card_selection(seat: Seat,
                                  to_beat: Single | Pair | Straight | Triple | Quad | SequentialPairs | None = None,
                                  min_card: Card | None = None) -> Single | Pair | Straight | Triple | Quad | SequentialPairs | None:
+    # clear screen for next player
     os.system('cls||clear')
     print(f'Pass the keyboard to {seat.player}.')
     input("Press Enter to continue...")
@@ -88,21 +90,14 @@ def start_game(players: Iterable[str]):
 
     winners = []
     total_players = len(seats)  # track total players to see when to end game
-    # find player with lowest card
-    first = 0
-    min_card = min(seats[first].hand)
-    for i in range(1, len(seats)):
-        curr_min = min(seats[i].hand)
-        if curr_min < min_card:
-            min_card = curr_min
-            first = i
-    first_round = True
+    # find player with lowest card to start order
+    first, min_card = min(((i, min(seat.hand)) for i, seat in enumerate(seats)), key=operator.itemgetter(1))
     round_order = deque()
     round_order.extendleft(seats[first:] + seats[:first])  # append in reverse order so pop() works properly
     while len(winners) < total_players - 1:
         # Start round
         seat_turn = round_order[-1]
-        if not first_round:
+        if not min_card:
             play = print_and_get_card_selection(seat_turn)
             if len(seat_turn.hand) == 0:
                 winners.append(seat_turn)
@@ -112,7 +107,7 @@ def start_game(players: Iterable[str]):
         else:
             # first round requires lowest card
             play = print_and_get_card_selection(seat_turn, min_card=min_card)
-            first_round = False  # set off after first round
+            min_card = None  # set off after first round
             round_order.rotate()
         current_lead = seat_turn  # specifically to catch if player wins round and is done, the player to the left goes next, not last to pass in round.
         while len(round_order) > 1:
