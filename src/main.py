@@ -1,3 +1,4 @@
+import os
 from collections import deque
 from dataclasses import dataclass
 from typing import Iterable
@@ -18,6 +19,9 @@ class Seat:
 def print_and_get_card_selection(seat: Seat,
                                  to_beat: Single | Pair | Straight | Triple | Quad | SequentialPairs | None = None,
                                  min_card: Card | None = None) -> Single | Pair | Straight | Triple | Quad | SequentialPairs | None:
+    os.system('cls||clear')
+    print(f'Pass the keyboard to {seat.player}.')
+    input("Press Enter to continue...")
     sorted_hand = sorted(seat.hand)
     hand_str = [f'{card.rank.label} {card.suit.label}' for card in sorted_hand]
     print(tabulate([hand_str, range(1, len(hand_str)+1)], tablefmt='rounded_grid'))  # print hand and indexes
