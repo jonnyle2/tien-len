@@ -101,9 +101,9 @@ class TableState(Enum):
 
 
 def announce(players, messages):
-        for player in players:
-            for message in messages:
-                player.sendLine(message.encode())
+    for player in players:
+        for message in messages:
+            player.sendLine(message.encode())
 
 
 class Table:
@@ -139,18 +139,43 @@ class Table:
     def start(self):
         if self.state is TableState.STARTED:
             raise RuntimeError('Cannot start game: game has already started.')
-        for player in self.players:
-            player.state = PlayerState.PLAYING
         self.state = TableState.STARTED
         self.game = Game(self.players)
+        instant_winners = self.game.start()
+        if instant_winners:
+            messages = []
+            first_place_names = []
+            for winner in instant_winners:
+                messages.append(f'{winner[0].player.name} got an instant win by {winner[1]}!')
+                messages.append(f'Hand: {sorted(winner[0].hand)}')
+                first_place_names.append(winner[0].player.name)
+            messages.append(f'1st place: {", ".join(first_place_names)}')
+            messages.append(f'4th place: {", ".join((seat.player.name for seat in self.seats if seat.player.name not in first_place_names))}')
+            announce(self.players, messages)
+            self.reset()
 
     def play(self, player, line):
         # propagate to game
-        self.game.play(player, line)
+        msg = self.game.play(player, line)
+        if msg:
+            announce(self.players, [msg])
+            self.reset()
+
+    def reset(self):
+        for player in self.players:
+            player.state = PlayerState.LOBBY
+        self.state = TableState.LOBBY
+        self.game = None
 
 class Game:
     def __init__(self, players: Iterable[Player]):
         self.seats = [Seat(player, hand) for player, hand in zip(players, deal_deck())]
+        # later initialized in start() if no instant winners
+        self.winners = None
+        self.total_players = None
+        self.round = None
+
+    def instant_win_phase(self):
         # check instant winners
         instant_winners = []
         for seat in self.seats:
@@ -161,37 +186,47 @@ class Game:
             instant_win = rule.has_instant_win(seat.hand)
             if instant_win:
                 instant_winners.append((seat, instant_win))
+        return instant_winners
+
+    def start(self):
+        instant_winners = self.instant_win_phase()
         if instant_winners:
-            messages = []
-            first_place_names = []
-            for winner in instant_winners:
-                messages.append(f'{winner[0].player.name} got an instant win by {winner[1]}!')
-                messages.append(f'Hand: {sorted(winner[0].hand)}')
-                first_place_names.append(winner[0].player.name)
-            messages.append(f'1st place: {", ".join(first_place_names)}')
-            messages.append(f'4th place: {", ".join((seat.player.name for seat in self.seats if seat.player.name not in first_place_names))}')
-            for seat in self.seats:
-                for msg in messages:
-                    seat.player.sendLine(msg.encode())
-                seat.player.state = PlayerState.LOBBY
-            return
+            return instant_winners
         self.winners = []
+        self.total_players = len(self.seats)
         first, min_card = min(((i, min(seat.hand)) for i, seat in enumerate(self.seats)), key=operator.itemgetter(1))
         ordered_seats = self.seats[first:] + self.seats[:first]
-        self.round = Round(ordered_seats, min_card)
+        self.round = Round(ordered_seats, self, min_card)
 
     def play(self, player, line):
         # propagate to round
-        self.round.play(player, line)
+        round_winner = self.round.play(player, line)
+        if len(self.winners) >= self.total_players - 1:
+            prefixes = ['1st place: ', '2nd place: ', '3rd place: ', '4th place: ']
+            self.winners.append(next(seat for seat in self.seats if seat not in self.winners))
+            msg = ', '.join(prefix + seat.player.name for prefix, seat in zip(prefixes, self.winners))
+            return msg
+        if round_winner:
+            if len(round_winner.hand) == 0:
+                # loop through seats that aren't done, starting with
+                i = self.seats.index(round_winner)
+                round_winner = next(seat for seat in self.seats[i+1:] + self.seats[:i] if len(seat.hand) != 0)
+            index = self.seats.index(round_winner)
+            self.round = Round(self.seats[index:] + self.seats[:index], self)
+
 
 class Round:
-    def __init__(self, ordered_seats, min_card = None):
+    def __init__(self, ordered_seats, game, min_card = None):
+        self.game = game
         self.players = [seat.player for seat in ordered_seats]
         self.ordered_seats = deque()
         self.ordered_seats.extendleft(ordered_seats)
+        for seat in list(self.ordered_seats)[:-1]:
+            seat.player.state = PlayerState.PLAYING
+        self.ordered_seats[-1].player.state = PlayerState.GET_PLAY
         self.min_card = min_card
         self.winning_card = None
-        self.winner = None
+        self.winning_seat = None  # track for specific case
 
     def play(self, player, line):
         line = line.lower().split()
@@ -205,6 +240,10 @@ class Round:
                 player.state = PlayerState.PLAYING
                 announce(self.players, [f'Player {player.name} dropped out of the round.'])
                 self.ordered_seats.pop()
+                if len(self.ordered_seats) == 1:
+                    return self.handle_special_case()
+                if len(self.ordered_seats) == 0:
+                    return self.winning_seat
                 self.ordered_seats[-1].player.state = PlayerState.GET_PLAY
             else:
                 player.sendLine('Please enter only numbers or "pass".'.encode())
@@ -235,7 +274,21 @@ class Round:
                 player.sendLine(str(e).encode)
                 return
         self.ordered_seats[-1].hand.difference_update(cards)
+        self.winning_seat = self.ordered_seats[-1]
+        self.winning_card = play
         self.ordered_seats[-1].player.state = PlayerState.PLAYING
         announce(self.players, [f'Player {player.name} played: {play}'])
-        self.winning_card = play
-        self.ordered_seats.rotate()
+        if len(self.ordered_seats[-1].hand) == 0:
+            self.game.winners.append(self.ordered_seats.pop())
+        else:
+            self.ordered_seats.rotate()
+        if len(self.ordered_seats) <= 1:
+            return self.handle_special_case()
+
+    def handle_special_case(self):
+        # check special case
+        if self.winning_seat != self.ordered_seats[0]:
+            # round winner was done, check if next player can pickup
+            self.ordered_seats[0].player.state = PlayerState.GET_PLAY
+        else:
+            return self.winning_seat
