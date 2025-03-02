@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Iterable
 
 from tabulate import tabulate
+from twisted.internet import reactor
 from twisted.internet.protocol import Factory, connectionDone
 from twisted.protocols.basic import LineReceiver
 
@@ -45,6 +46,8 @@ class Player(LineReceiver):
             self.handle_GET_NAME(line)
         elif self.state is PlayerState.LOBBY:
             self.handle_LOBBY(line)
+        elif self.state is PlayerState.READY:
+            self.handle_READY(line)
         elif self.state is PlayerState.PLAYING:
             self.sendLine('Not your turn yet. Waiting on other player...'.encode())
         elif self.state is PlayerState.GET_PLAY:
@@ -57,7 +60,12 @@ class Player(LineReceiver):
         self.sendLine(f"Welcome, {name}!".encode())
         self.name = name
         self.state = PlayerState.LOBBY
-        self.table.join(self)
+        try:
+            self.table.join(self)
+        except RuntimeError as e:
+            self.sendLine(str(e).encode())
+            self.transport.loseConnection()
+            return
         if self.table.host is self:
             self.sendLine('You are the lobby host. When everyone is ready, type "start" to start the game'.encode())
         else:
@@ -76,10 +84,17 @@ class Player(LineReceiver):
                 self.sendLine('Type "start" when everyone is ready.'.encode())
         elif msg in ['r', 'rdy', 'ready']:
             self.state = PlayerState.READY
-            self.sendLine('You are now ready. Waiting on others and host to start.')
+            self.sendLine('You are now ready. Waiting on others to be ready and host to start.'.encode())
         else:
             self.sendLine('Type "ready" to get ready. The host will start when everyone is ready.'.encode())
 
+    def handle_READY(self, line):
+        msg = line.lower()
+        if msg in ['ur', 'unready']:
+            self.state = PlayerState.LOBBY
+            self.sendLine('You are now unready. Type "ready" to get ready.'.encode())
+        else:
+            self.sendLine('You are ready. Waiting on others to be ready and host to start.'.encode())
 
 class PlayerFactory(Factory):
     def __init__(self):
@@ -211,6 +226,10 @@ class Game:
                 # loop through seats that aren't done, starting with
                 i = self.seats.index(round_winner)
                 round_winner = next(seat for seat in self.seats[i+1:] + self.seats[:i] if len(seat.hand) != 0)
+            # remove finished players before next round
+            for seat in self.seats:
+                if len(seat.hand) == 0:
+                    self.seats.remove(seat)
             index = self.seats.index(round_winner)
             self.round = Round(self.seats[index:] + self.seats[:index], self)
 
@@ -221,12 +240,30 @@ class Round:
         self.players = [seat.player for seat in ordered_seats]
         self.ordered_seats = deque()
         self.ordered_seats.extendleft(ordered_seats)
-        for seat in list(self.ordered_seats)[:-1]:
-            seat.player.state = PlayerState.PLAYING
         self.ordered_seats[-1].player.state = PlayerState.GET_PLAY
         self.min_card = min_card
+        if not self.min_card:
+            self.ordered_seats[-1].player.sendLine('New round. Play any combination to start.'.encode())
+            self.ordered_seats[-1].player.sendLine('Your hand:'.encode())
+            hand_str = [f'{card.rank.label} {card.suit.label}' for card in sorted(self.ordered_seats[-1].hand)]
+            self.ordered_seats[-1].player.sendLine(tabulate([hand_str, range(1, len(hand_str)+1)], tablefmt='rounded_grid').encode())
+        else:
+            self.ordered_seats[-1].player.sendLine('You are first to start the game!'.encode())
+            self.ordered_seats[-1].player.sendLine(f'Play a combination with your lowest card: {self.min_card.rank.label} of {self.min_card.suit.name.lower()}.'.encode())
+        for seat in list(self.ordered_seats)[:-1]:
+            seat.player.sendLine(f'New round! Player {self.ordered_seats[-1].player.name} is going first.'.encode())
+            seat.player.state = PlayerState.PLAYING
         self.winning_card = None
         self.winning_seat = None  # track for specific case
+
+    def handle_next_player(self, seat):
+        seat.player.state = PlayerState.GET_PLAY
+        msgs = ['It is your turn!']
+        msgs.append('Your hand:')
+        hand_str = [f'{card.rank.label} {card.suit.label}' for card in sorted(seat.hand)]
+        msgs.append(tabulate([hand_str, range(1, len(hand_str)+1)], tablefmt='rounded_grid'))
+        for msg in msgs:
+            seat.player.sendLine(msg.encode())
 
     def play(self, player, line):
         line = line.lower().split()
@@ -244,9 +281,11 @@ class Round:
                     return self.handle_special_case()
                 if len(self.ordered_seats) == 0:
                     return self.winning_seat
-                self.ordered_seats[-1].player.state = PlayerState.GET_PLAY
-            else:
+                self.handle_next_player(self.ordered_seats[-1])
+            elif self.winning_card:
                 player.sendLine('Please enter only numbers or "pass".'.encode())
+            else:
+                player.sendLine('Please enter only numbers.'.encode())
             return
         except IndexError:
             player.sendLine(f'Please enter only numbers from 1-{len(sorted_hand)}.'.encode())
@@ -280,15 +319,22 @@ class Round:
         announce(self.players, [f'Player {player.name} played: {play}'])
         if len(self.ordered_seats[-1].hand) == 0:
             self.game.winners.append(self.ordered_seats.pop())
+            announce(self.players, [f'Player {player.name} is finished!'])
         else:
             self.ordered_seats.rotate()
         if len(self.ordered_seats) <= 1:
             return self.handle_special_case()
+        self.handle_next_player(self.ordered_seats[-1])
 
     def handle_special_case(self):
         # check special case
         if self.winning_seat != self.ordered_seats[0]:
             # round winner was done, check if next player can pickup
-            self.ordered_seats[0].player.state = PlayerState.GET_PLAY
+            self.handle_next_player(self.ordered_seats[-1])
         else:
             return self.winning_seat
+
+if __name__ == '__main__':
+    factory = PlayerFactory()
+    reactor.listenTCP(8123, factory)
+    reactor.run()
